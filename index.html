@@ -2,7 +2,8 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- 需求4：禁止手机页面缩放 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>贪吃蛇 · Snake</title>
 <style>
   * { box-sizing: border-box; }
@@ -24,9 +25,11 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
+    width: 100%;
+    max-width: 420px;
+    padding: 0 10px;
   }
 
-  /* 分数栏 */
   .hud {
     display: flex;
     justify-content: space-between;
@@ -44,14 +47,17 @@
 
   canvas {
     display: block;
-    width: 400px;
-    height: 400px;
+    width: 100%;
+    max-width: 400px;
+    height: auto;
+    aspect-ratio: 1 / 1;
     border-radius: 12px;
     background: #0b1220;
     box-shadow: 0 0 0 1px rgba(148, 163, 184, .18), 0 18px 40px rgba(0, 0, 0, .55);
+    /* 需求4/5：阻止浏览器默认触摸行为（滚动、缩放） */
+    touch-action: none;
   }
 
-  /* 底部操作栏 */
   .bar {
     display: flex;
     align-items: center;
@@ -70,6 +76,8 @@
     cursor: pointer;
     font-weight: 600;
     transition: transform .08s ease, filter .15s ease;
+    /* 防止移动端点击时出现灰色高亮 */
+    -webkit-tap-highlight-color: transparent;
   }
   button:hover { filter: brightness(1.06); }
   button:active { transform: translateY(1px) scale(.98); }
@@ -94,7 +102,7 @@
 
     <footer class="bar">
       <button id="restart">重新开始</button>
-      <span class="tip">方向键移动 · 空格暂停/继续</span>
+      <span class="tip">方向键移动 · 空格暂停/继续<br>手机请滑动屏幕控制</span>
     </footer>
   </div>
 
@@ -105,11 +113,11 @@
   /* =========================================================
    *  1. 基础配置
    * ========================================================= */
-  const COLS = 20;                 // 横向格子数
-  const ROWS = 20;                 // 纵向格子数
-  const CELL = 20;                 // 每格像素（400 / 20）
-  const STEP_TIME = 120;           // 蛇每走一步的毫秒数（数值越小越快）
-  const BEST_KEY = 'snake_best_score'; // localStorage 存储键
+  const COLS = 20;
+  const ROWS = 20;
+  const CELL = 20;
+  const STEP_TIME = 120;
+  const BEST_KEY = 'snake_best_score';
 
   /* =========================================================
    *  2. DOM 引用
@@ -123,21 +131,19 @@
   /* =========================================================
    *  3. 游戏状态变量
    * ========================================================= */
-  let snake;            // 蛇身数组，snake[0] 是蛇头，元素形如 {x, y}
-  let dir;              // 当前移动方向 {x, y}
-  let dirQueue;         // 方向输入队列（防止一帧内连按导致反向）
-  let food;             // 食物坐标 {x, y}
-  let score;            // 当前分数
-  let best;             // 历史最高分
-  let state;            // 游戏状态：'running' | 'paused' | 'over'
-  let lastTime = 0;     // 上一帧时间戳
-  let acc = 0;          // 时间累加器（用于固定步长移动）
+  let snake;
+  let dir;
+  let dirQueue;
+  let food;
+  let score;
+  let best;
+  let state;            // 'running' | 'paused' | 'over'
+  let lastTime = 0;
+  let acc = 0;
 
   /* =========================================================
    *  4. 工具函数
    * ========================================================= */
-
-  /** 绘制圆角矩形路径 */
   function roundRectPath(x, y, w, h, r) {
     r = Math.min(r, w / 2, h / 2);
     ctx.beginPath();
@@ -149,7 +155,6 @@
     ctx.closePath();
   }
 
-  /** 从 localStorage 读取最高分 */
   function loadBest() {
     const v = Number(localStorage.getItem(BEST_KEY));
     return Number.isFinite(v) && v > 0 ? v : 0;
@@ -159,14 +164,12 @@
    *  5. 初始化 / 重开
    * ========================================================= */
   function reset() {
-    // 蛇初始长度 3，位于中间偏左，朝右
     snake = [
-      { x: 7, y: 10 },  // 头
+      { x: 7, y: 10 },
       { x: 6, y: 10 },
-      { x: 5, y: 10 }   // 尾
+      { x: 5, y: 10 }
     ];
-
-    dir      = { x: 1, y: 0 };  // 初始方向：向右
+    dir      = { x: 1, y: 0 };
     dirQueue = [];
     score    = 0;
     state    = 'running';
@@ -176,15 +179,14 @@
     scoreEl.textContent = score;
     bestEl.textContent  = best;
 
-    placeFood();  // 生成第一个食物
-    draw();       // 立即绘制一帧，避免闪烁
+    placeFood();
+    draw();
   }
 
   /* =========================================================
-   *  6. 食物生成（不能生成在蛇身上）
+   *  6. 食物生成
    * ========================================================= */
   function placeFood() {
-    // 收集所有空格子
     const empty = [];
     for (let y = 0; y < ROWS; y++) {
       for (let x = 0; x < COLS; x++) {
@@ -192,7 +194,7 @@
         if (!occupied) empty.push({ x, y });
       }
     }
-    if (empty.length === 0) return; // 理论上满屏才会发生（通关）
+    if (empty.length === 0) return;
     food = empty[Math.floor(Math.random() * empty.length)];
   }
 
@@ -200,55 +202,43 @@
    *  7. 方向控制（禁止 180° 掉头）
    * ========================================================= */
   function setDirection(nd) {
-    // 以「队列中最后一个待执行方向」为基准判断，避免连续快速按键出 bug
     const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
-
-    // 反向：直接忽略
-    if (nd.x === -last.x && nd.y === -last.y) return;
-    // 同向：忽略
-    if (nd.x === last.x && nd.y === last.y) return;
-
-    // 队列最多缓存 2 个输入
+    if (nd.x === -last.x && nd.y === -last.y) return; // 反向无效
+    if (nd.x === last.x && nd.y === last.y) return;    // 同向忽略
     if (dirQueue.length < 2) dirQueue.push(nd);
   }
 
   /* =========================================================
-   *  8. 走一步（核心逻辑）
+   *  8. 走一步
    * ========================================================= */
   function step() {
-    // 取出一个待执行方向
     if (dirQueue.length) dir = dirQueue.shift();
 
     const head = snake[0];
     const next = { x: head.x + dir.x, y: head.y + dir.y };
 
-    // --- 撞墙判定 ---
+    // 撞墙
     if (next.x < 0 || next.x >= COLS || next.y < 0 || next.y >= ROWS) {
       gameOver();
       return;
     }
 
-    // 是否吃到食物（决定这一帧尾巴是否移动）
     const willGrow = (next.x === food.x && next.y === food.y);
-
-    // --- 撞自己判定 ---
-    // 若不吃食物，尾巴会移开，因此尾节点不算障碍
     const body = willGrow ? snake : snake.slice(0, -1);
+
+    // 撞自己
     if (body.some(seg => seg.x === next.x && seg.y === next.y)) {
       gameOver();
       return;
     }
 
-    // 前进：头插入新格子
     snake.unshift(next);
 
     if (willGrow) {
-      // 吃到食物：加分、变长（不删尾巴）、重新生成食物
       score += 10;
       scoreEl.textContent = score;
       placeFood();
     } else {
-      // 正常移动：删掉尾巴
       snake.pop();
     }
   }
@@ -258,7 +248,6 @@
    * ========================================================= */
   function gameOver() {
     state = 'over';
-    // 更新最高分并写入 localStorage
     if (score > best) {
       best = score;
       bestEl.textContent = best;
@@ -278,11 +267,10 @@
    *  10. 绘制
    * ========================================================= */
   function draw() {
-    // --- 背景 ---
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // --- 网格线 ---
+    // 网格线
     ctx.strokeStyle = 'rgba(148, 163, 184, 0.10)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -298,18 +286,14 @@
     }
     ctx.stroke();
 
-    // --- 食物 ---
     drawFood();
 
-    // --- 蛇（从尾到头绘制，保证蛇头在最上层）---
     for (let i = snake.length - 1; i >= 0; i--) {
       const seg = snake[i];
       const isHead = (i === 0);
-
       ctx.fillStyle = isHead
         ? '#86efac'
         : `hsl(142, 66%, ${52 - Math.min(i * 1.8, 22)}%)`;
-
       roundRectPath(
         seg.x * CELL + 2,
         seg.y * CELL + 2,
@@ -322,15 +306,13 @@
 
     drawEyes();
 
-    // --- 状态遮罩 ---
     if (state === 'paused') {
-      drawOverlay('已暂停', '按空格键继续');
+      drawOverlay('已暂停', '按空格键继续 / 点击继续');
     } else if (state === 'over') {
       drawOverlay('游戏结束', '得分 ' + score + ' · 点击「重新开始」再来一局');
     }
   }
 
-  /** 画食物（带渐变的小红球） */
   function drawFood() {
     const cx = food.x * CELL + CELL / 2;
     const cy = food.y * CELL + CELL / 2;
@@ -339,30 +321,25 @@
     const grad = ctx.createRadialGradient(cx - 3, cy - 3, 1, cx, cy, r + 2);
     grad.addColorStop(0, '#fca5a5');
     grad.addColorStop(1, '#dc2626');
-
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
 
-    // 高光
     ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
     ctx.beginPath();
     ctx.arc(cx - 3, cy - 3, 2, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  /** 画蛇眼睛（跟随当前移动方向） */
   function drawEyes() {
     const head = snake[0];
     if (!head) return;
-
     const cx = head.x * CELL + CELL / 2;
     const cy = head.y * CELL + CELL / 2;
-
-    const fx = dir.x, fy = dir.y;      // 前方单位向量
-    const px = -fy,   py = fx;         // 垂直单位向量
-    const off = 4.5;                   // 眼睛左右偏移
+    const fx = dir.x, fy = dir.y;
+    const px = -fy, py = fx;
+    const off = 4.5;
 
     ctx.fillStyle = '#0b1220';
     const eyes = [
@@ -376,29 +353,24 @@
     });
   }
 
-  /** 画居中的半透明提示层 */
   function drawOverlay(title, subtitle) {
     ctx.fillStyle = 'rgba(2, 6, 23, 0.72)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-
     ctx.fillStyle = '#e2e8f0';
     ctx.font = 'bold 30px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 18);
-
     ctx.fillStyle = '#94a3b8';
     ctx.font = '14px system-ui, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 22);
   }
 
   /* =========================================================
-   *  11. 主循环（requestAnimationFrame + 固定步长）
+   *  11. 主循环
    * ========================================================= */
   function loop(t) {
     if (!lastTime) lastTime = t;
-    // 限制单帧时间，防止切换标签页回来后「瞬移」
     const dt = Math.min(t - lastTime, 200);
     lastTime = t;
 
@@ -415,7 +387,7 @@
   }
 
   /* =========================================================
-   *  12. 键盘事件
+   *  12. 键盘事件（保留原有的电脑键盘控制，不影响触屏）
    * ========================================================= */
   const KEY_MAP = {
     ArrowUp:    { x: 0,  y: -1 },
@@ -425,35 +397,103 @@
   };
 
   document.addEventListener('keydown', function (e) {
-    // 阻止方向键滚动页面、空格滚动页面
     if (e.key in KEY_MAP || e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
     }
-
-    // 空格：暂停 / 继续
     if (e.key === ' ' || e.code === 'Space') {
       togglePause();
       return;
     }
-
     const nd = KEY_MAP[e.key];
     if (!nd) return;
-    if (state !== 'running') return; // 暂停或结束时不允许转向
-
+    if (state !== 'running') return;
     setDirection(nd);
   });
 
-  // 切到其他窗口时自动暂停，避免回来就撞死
-  window.addEventListener('blur', function () {
-    if (state === 'running') state = 'paused';
-  });
+  /* =========================================================
+   *  13. 触屏滑动控制（手机操作核心逻辑）
+   * ========================================================= */
+
+  // 记录手指起点和终点坐标
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchEndX = 0;
+  let touchEndY = 0;
+
+  // 触发滑动的滑动距离阈值（避免轻点误触方向，单位 px）
+  const MIN_SWIPE_DISTANCE = 30;
+
+  // 手指按下：记录起点
+  canvas.addEventListener('touchstart', function (e) {
+    // 游戏暂停或结束时，不响应滑动
+    if (state !== 'running') return;
+    const touch = e.touches[0];
+    touchStartX = touch.clientX;
+    touchStartY = touch.clientY;
+    // 阻止事件继续传播（如页面滚动、双击缩放等）
+    e.preventDefault();
+  }, { passive: false });
+
+  // 手指滑动：强制阻止页面滚动，这是防止网页被拖动的关键
+  canvas.addEventListener('touchmove', function (e) {
+    e.preventDefault(); // 阻止手指滑动时把整个网页拖动
+  }, { passive: false });
+
+  // 手指抬起：计算滑动方向
+  canvas.addEventListener('touchend', function (e) {
+    if (state !== 'running') return;
+
+    const touch = e.changedTouches[0];
+    touchEndX = touch.clientX;
+    touchEndY = touch.clientY;
+
+    handleSwipe();
+    e.preventDefault();
+  }, { passive: false });
+
+  /**
+   * 判断滑动方向逻辑：
+   * 1. 计算 X 轴和 Y 轴的位移差值 dx 和 dy
+   * 2. 比较绝对值，如果 |dx| > |dy|，说明是左右滑动；否则是上下滑动
+   * 3. 根据正负号确定具体方向，并调用 setDirection
+   *    （setDirection 内部已处理 180 度掉头限制）
+   */
+  function handleSwipe() {
+    const dx = touchEndX - touchStartX;
+    const dy = touchEndY - touchStartY;
+
+    // 滑动距离太小视为误触，不处理
+    if (Math.abs(dx) < MIN_SWIPE_DISTANCE && Math.abs(dy) < MIN_SWIPE_DISTANCE) {
+      return;
+    }
+
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // 水平滑动
+      if (dx > 0) {
+        setDirection({ x: 1, y: 0 });  // 向右滑
+      } else {
+        setDirection({ x: -1, y: 0 }); // 向左滑
+      }
+    } else {
+      // 垂直滑动
+      if (dy > 0) {
+        setDirection({ x: 0, y: 1 });  // 向下滑
+      } else {
+        setDirection({ x: 0, y: -1 }); // 向上滑
+      }
+    }
+  }
 
   /* =========================================================
-   *  13. 按钮事件 & 启动
+   *  14. 按钮事件 & 启动
    * ========================================================= */
   restartBtn.addEventListener('click', function () {
     reset();
-    restartBtn.blur(); // 防止按钮保持焦点后被空格触发
+    restartBtn.blur();
+  });
+
+  window.addEventListener('blur', function () {
+    if (state === 'running') state = 'paused';
   });
 
   best = loadBest();
@@ -463,4 +503,4 @@
 })();
 </script>
 </body>
-</html>
+</html>s
