@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<!-- 需求4：禁止手机页面缩放 -->
+<!-- 禁止手机页面缩放 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>贪吃蛇 · Snake</title>
 <style>
@@ -27,7 +27,7 @@
     gap: 12px;
     width: 100%;
     max-width: 420px;
-    padding: 0 10px;
+    padding: 10px;
   }
 
   .hud {
@@ -51,11 +51,54 @@
     max-width: 400px;
     height: auto;
     aspect-ratio: 1 / 1;
+    margin: 0 auto;
     border-radius: 12px;
     background: #0b1220;
     box-shadow: 0 0 0 1px rgba(148, 163, 184, .18), 0 18px 40px rgba(0, 0, 0, .55);
-    /* 需求4/5：阻止浏览器默认触摸行为（滚动、缩放） */
     touch-action: none;
+  }
+
+  /* ==================== 四方向按键 ==================== */
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 56px);
+    grid-template-rows: repeat(3, 56px);
+    gap: 8px;
+    justify-content: center;
+    margin: 4px auto 0;
+  }
+
+  /* 按钮在网格中的位置：上、左、右、下 */
+  .dpad-btn[data-dir="up"]    { grid-column: 2; grid-row: 1; }
+  .dpad-btn[data-dir="left"]  { grid-column: 1; grid-row: 2; }
+  .dpad-btn[data-dir="right"] { grid-column: 3; grid-row: 2; }
+  .dpad-btn[data-dir="down"]  { grid-column: 2; grid-row: 3; }
+
+  /* 覆盖全局 button 样式，让方向键按钮用暗色风格 */
+  .dpad-btn {
+    width: 56px;
+    height: 56px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    line-height: 1;
+    color: #4ade80;
+    background: #1e293b;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 12px;
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: background .1s ease, transform .06s ease;
+  }
+  .dpad-btn:hover  { background: #243449; }
+  /* 按下时的反馈（:active 在桌面端鼠标点击时生效） */
+  .dpad-btn:active { background: #334155; transform: scale(.94); }
+  /* 触屏按下时的即时视觉反馈 */
+  .dpad-btn.pressed {
+    background: #334155;
+    transform: scale(.94);
   }
 
   .bar {
@@ -65,6 +108,7 @@
     gap: 12px;
   }
 
+  /* 全局 button 基础样式（只作用于“重新开始”按钮） */
   button {
     padding: 9px 18px;
     font-size: 14px;
@@ -76,7 +120,6 @@
     cursor: pointer;
     font-weight: 600;
     transition: transform .08s ease, filter .15s ease;
-    /* 防止移动端点击时出现灰色高亮 */
     -webkit-tap-highlight-color: transparent;
   }
   button:hover { filter: brightness(1.06); }
@@ -100,9 +143,17 @@
 
     <canvas id="game" width="400" height="400"></canvas>
 
+    <!-- 四方向按键：data-dir 属性标记方向，由 JS 统一处理 -->
+    <div class="dpad">
+      <button class="dpad-btn" data-dir="up"    aria-label="向上">▲</button>
+      <button class="dpad-btn" data-dir="left"  aria-label="向左">◀</button>
+      <button class="dpad-btn" data-dir="right" aria-label="向右">▶</button>
+      <button class="dpad-btn" data-dir="down"  aria-label="向下">▼</button>
+    </div>
+
     <footer class="bar">
       <button id="restart">重新开始</button>
-      <span class="tip">方向键移动 · 空格暂停/继续<br>手机请滑动屏幕控制</span>
+      <span class="tip">方向键 / 滑动屏幕控制<br>空格暂停/继续</span>
     </footer>
   </div>
 
@@ -116,7 +167,8 @@
   const COLS = 20;
   const ROWS = 20;
   const CELL = 20;
-  const STEP_TIME = 120;
+  /* 【速度调整】原值 120，现改为 150，数值越大蛇走得越慢 */
+  const STEP_TIME = 150;
   const BEST_KEY = 'snake_best_score';
 
   /* =========================================================
@@ -387,7 +439,7 @@
   }
 
   /* =========================================================
-   *  12. 键盘事件（保留原有的电脑键盘控制，不影响触屏）
+   *  12. 键盘事件（保留电脑端操作）
    * ========================================================= */
   const KEY_MAP = {
     ArrowUp:    { x: 0,  y: -1 },
@@ -411,81 +463,103 @@
   });
 
   /* =========================================================
-   *  13. 触屏滑动控制（手机操作核心逻辑）
+   *  13. 触屏滑动控制
    * ========================================================= */
-
-  // 记录手指起点和终点坐标
   let touchStartX = 0;
   let touchStartY = 0;
   let touchEndX = 0;
   let touchEndY = 0;
 
-  // 触发滑动的滑动距离阈值（避免轻点误触方向，单位 px）
-  const MIN_SWIPE_DISTANCE = 30;
+  const MIN_SWIPE_DISTANCE = 30; // 滑动阈值，防止轻触误触发
 
-  // 手指按下：记录起点
   canvas.addEventListener('touchstart', function (e) {
-    // 游戏暂停或结束时，不响应滑动
     if (state !== 'running') return;
     const touch = e.touches[0];
     touchStartX = touch.clientX;
     touchStartY = touch.clientY;
-    // 阻止事件继续传播（如页面滚动、双击缩放等）
     e.preventDefault();
   }, { passive: false });
 
-  // 手指滑动：强制阻止页面滚动，这是防止网页被拖动的关键
   canvas.addEventListener('touchmove', function (e) {
-    e.preventDefault(); // 阻止手指滑动时把整个网页拖动
+    e.preventDefault(); // 阻止手指滑动时拖动整个页面
   }, { passive: false });
 
-  // 手指抬起：计算滑动方向
   canvas.addEventListener('touchend', function (e) {
     if (state !== 'running') return;
-
     const touch = e.changedTouches[0];
     touchEndX = touch.clientX;
     touchEndY = touch.clientY;
-
     handleSwipe();
     e.preventDefault();
   }, { passive: false });
 
   /**
-   * 判断滑动方向逻辑：
-   * 1. 计算 X 轴和 Y 轴的位移差值 dx 和 dy
-   * 2. 比较绝对值，如果 |dx| > |dy|，说明是左右滑动；否则是上下滑动
-   * 3. 根据正负号确定具体方向，并调用 setDirection
-   *    （setDirection 内部已处理 180 度掉头限制）
+   * 滑动方向判断：
+   * dx = 终点X - 起点X，dy = 终点Y - 起点Y
+   * 若 |dx| > |dy| 则判定为水平滑动，否则为垂直滑动
+   * 再根据 dx / dy 的正负号决定具体方向
+   * setDirection 内部已经处理了 180° 掉头限制
    */
   function handleSwipe() {
     const dx = touchEndX - touchStartX;
     const dy = touchEndY - touchStartY;
 
-    // 滑动距离太小视为误触，不处理
     if (Math.abs(dx) < MIN_SWIPE_DISTANCE && Math.abs(dy) < MIN_SWIPE_DISTANCE) {
-      return;
+      return; // 滑动距离太小，视为误触
     }
 
     if (Math.abs(dx) > Math.abs(dy)) {
-      // 水平滑动
-      if (dx > 0) {
-        setDirection({ x: 1, y: 0 });  // 向右滑
-      } else {
-        setDirection({ x: -1, y: 0 }); // 向左滑
-      }
+      setDirection(dx > 0 ? { x: 1, y: 0 } : { x: -1, y: 0 });
     } else {
-      // 垂直滑动
-      if (dy > 0) {
-        setDirection({ x: 0, y: 1 });  // 向下滑
-      } else {
-        setDirection({ x: 0, y: -1 }); // 向上滑
-      }
+      setDirection(dy > 0 ? { x: 0, y: 1 } : { x: 0, y: -1 });
     }
   }
 
   /* =========================================================
-   *  14. 按钮事件 & 启动
+   *  14. 四方向按键控制
+   * ========================================================= */
+  const DIR_MAP = {
+    up:    { x: 0,  y: -1 },
+    down:  { x: 0,  y: 1  },
+    left:  { x: -1, y: 0  },
+    right: { x: 1,  y: 0  }
+  };
+
+  const dpadBtns = document.querySelectorAll('.dpad-btn');
+
+  dpadBtns.forEach(function (btn) {
+    // 使用 pointerdown：桌面鼠标点击和移动端触摸都会触发，响应更及时
+    btn.addEventListener('pointerdown', function (e) {
+      e.preventDefault(); // 阻止移动端产生重复的 click / 双击缩放
+
+      // 添加按压视觉反馈
+      btn.classList.add('pressed');
+
+      if (state !== 'running') return;
+
+      const nd = DIR_MAP[btn.dataset.dir];
+      if (nd) setDirection(nd);
+    });
+
+    // 松开手指 / 鼠标时移除按压效果
+    btn.addEventListener('pointerup', function () {
+      btn.classList.remove('pressed');
+    });
+    btn.addEventListener('pointerleave', function () {
+      btn.classList.remove('pressed');
+    });
+    btn.addEventListener('pointercancel', function () {
+      btn.classList.remove('pressed');
+    });
+
+    // 长按不弹出右键菜单
+    btn.addEventListener('contextmenu', function (e) {
+      e.preventDefault();
+    });
+  });
+
+  /* =========================================================
+   *  15. 按钮事件 & 启动
    * ========================================================= */
   restartBtn.addEventListener('click', function () {
     reset();
@@ -503,4 +577,4 @@
 })();
 </script>
 </body>
-</html>s
+</html>
