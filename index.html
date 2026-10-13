@@ -162,9 +162,89 @@
   const COLS = 20;
   const ROWS = 20;
   const CELL = 20;
-  /* 蛇每步间隔（毫秒）：数值越大蛇越慢 */
   const STEP_TIME = 150;
   const BEST_KEY = 'snake_best_score';
+
+  /* =========================================================
+   *  1.5 音效配置与工具 (Web Audio API)
+   * ========================================================= */
+  let audioCtx = null;
+
+  /**
+   * 初始化 / 解锁 AudioContext
+   * 现代浏览器要求必须在用户手势（键盘、触屏、点击）后
+   * 才能创建或 resume AudioContext，否则会被拦截。
+   */
+  function initAudio() {
+    if (!audioCtx) {
+      // 兼容不同浏览器
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return; // 极老旧浏览器直接跳过
+      audioCtx = new AudioContext();
+    }
+    // 如果处于挂起状态，恢复运行
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  /**
+   * 通用 8-bit 音效播放函数
+   * @param {string} type - 波形类型: 'square' | 'sawtooth' | 'sine' | 'triangle'
+   * @param {number} startFreq - 起始频率 (Hz)
+   * @param {number} endFreq - 结束频率 (Hz)，传入 null 表示不改变音调
+   * @param {number} duration - 持续时间 (秒)
+   * @param {number} volume - 音量 (0.0 ~ 1.0)，默认 0.1
+   */
+  function playSound(type, startFreq, endFreq, duration, volume = 0.1) {
+    if (!audioCtx) return; // 未初始化则直接跳过
+
+    const now = audioCtx.currentTime;
+
+    // 创建振荡器（产生声音波形）
+    const osc = audioCtx.createOscillator();
+    osc.type = type;
+
+    // 创建增益节点（控制音量，避免爆音）
+    const gainNode = audioCtx.createGain();
+
+    // 连接节点：振荡器 -> 增益 -> 扬声器
+    osc.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    // 设置频率
+    osc.frequency.setValueAtTime(startFreq, now);
+    if (endFreq !== null && endFreq !== undefined) {
+      // 指数渐变产生滑音效果（注意：数值不能为0）
+      osc.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+    }
+
+    // 设置音量包络：立即起音，然后指数衰减至接近0，避免结尾“咔哒”声
+    gainNode.gain.setValueAtTime(volume, now);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+    // 启动并停止
+    osc.start(now);
+    osc.stop(now + duration);
+  }
+
+  /** 吃到食物音效：短促清脆的“哔”声（方波，高音） */
+  function playEatSound() {
+    // 方波(square)最有8-bit味，频率从880Hz快速滑向1200Hz，持续0.1秒
+    playSound('square', 880, 1200, 0.1, 0.08);
+  }
+
+  /** 游戏结束音效：下降音调的“嗡”声（锯齿波，低沉） */
+  function playGameOverSound() {
+    // 锯齿波(sawtooth)音色偏悲伤，频率从300Hz滑降到50Hz，持续0.5秒
+    playSound('sawtooth', 300, 50, 0.5, 0.15);
+  }
+
+  /** 转向/点击音效：非常轻微的点击声（正弦波） */
+  function playClickSound() {
+    // 正弦波(sine)音色柔和，频率从600Hz滑向400Hz，持续0.05秒，极轻
+    playSound('sine', 600, 400, 0.05, 0.04);
+  }
 
   /* =========================================================
    *  2. DOM 引用
@@ -184,7 +264,7 @@
   let food;
   let score;
   let best;
-  let state;            // 'running' | 'paused' | 'over'
+  let state;
   let lastTime = 0;
   let acc = 0;
 
@@ -228,6 +308,8 @@
 
     placeFood();
     draw();
+    // 重新开始的时候也可以播放一个轻微的点击反馈（可选）
+    // playClickSound();
   }
 
   /* =========================================================
@@ -252,7 +334,12 @@
     const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
     if (nd.x === -last.x && nd.y === -last.y) return;
     if (nd.x === last.x && nd.y === last.y) return;
-    if (dirQueue.length < 2) dirQueue.push(nd);
+    
+    if (dirQueue.length < 2) {
+      dirQueue.push(nd);
+      // 成功改变方向时，播放轻微点击声
+      playClickSound();
+    }
   }
 
   /* =========================================================
@@ -283,6 +370,8 @@
       score += 10;
       scoreEl.textContent = score;
       placeFood();
+      // 吃到食物，播放音效
+      playEatSound();
     } else {
       snake.pop();
     }
@@ -293,6 +382,9 @@
    * ========================================================= */
   function gameOver() {
     state = 'over';
+    // 游戏结束，播放音效
+    playGameOverSound();
+    
     if (score > best) {
       best = score;
       bestEl.textContent = best;
@@ -353,7 +445,6 @@
     if (state === 'paused') {
       drawOverlay('已暂停', '按空格键继续 / 点击屏幕继续');
     } else if (state === 'over') {
-      /* 更新提示文字：点击屏幕任意地方即可重开 */
       drawOverlay('游戏结束', '得分 ' + score + ' · 点击屏幕任意地方再来一局');
     }
   }
@@ -442,6 +533,9 @@
   };
 
   document.addEventListener('keydown', function (e) {
+    // 【音效新增】任何键盘操作都尝试初始化音频（满足用户手势解锁要求）
+    initAudio();
+
     if (e.key in KEY_MAP || e.key === ' ' || e.code === 'Space') {
       e.preventDefault();
     }
@@ -466,6 +560,9 @@
   const MIN_SWIPE_DISTANCE = 30;
 
   canvas.addEventListener('touchstart', function (e) {
+    // 【音效新增】触屏操作时初始化音频
+    initAudio();
+
     if (state !== 'running') return;
     const touch = e.touches[0];
     touchStartX = touch.clientX;
@@ -515,6 +612,9 @@
 
   dpadBtns.forEach(function (btn) {
     btn.addEventListener('pointerdown', function (e) {
+      // 【音效新增】点击虚拟方向键时初始化音频
+      initAudio();
+
       e.preventDefault();
       btn.classList.add('pressed');
       if (state !== 'running') return;
@@ -540,16 +640,10 @@
   /* =========================================================
    *  15. 全局点击：游戏结束点击屏幕任意地方重新开始
    * ========================================================= */
-  /*
-   * 使用事件委托监听整个页面的点击事件。
-   * 如果点击目标恰好是按钮（重新开始、四方向键），则直接忽略，
-   * 避免和按钮自身逻辑冲突（例如点击重新开始按钮触发两次重开）。
-   * 否则：
-   *   - 若游戏已结束（state === 'over'），点击屏幕任意位置重新开始。
-   *   - 若游戏处于暂停（state === 'paused'），点击屏幕任意位置继续游戏。
-   */
   document.addEventListener('click', function (e) {
-    // 如果点击到的是按钮（包括重新开始按钮和四方向按键），不在此处处理
+    // 全局点击时也尝试初始化音频（防漏）
+    initAudio();
+
     if (e.target.closest('button')) return;
 
     if (state === 'over') {
@@ -563,6 +657,8 @@
    *  16. 按钮事件 & 启动
    * ========================================================= */
   restartBtn.addEventListener('click', function () {
+    // 【音效新增】点击重开按钮时也初始化音频
+    initAudio();
     reset();
     restartBtn.blur();
   });
@@ -578,4 +674,4 @@
 })();
 </script>
 </body>
-</html>s
+</html>ss
