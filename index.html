@@ -68,13 +68,11 @@
     margin: 4px auto 0;
   }
 
-  /* 按钮在网格中的位置：上、左、右、下 */
   .dpad-btn[data-dir="up"]    { grid-column: 2; grid-row: 1; }
   .dpad-btn[data-dir="left"]  { grid-column: 1; grid-row: 2; }
   .dpad-btn[data-dir="right"] { grid-column: 3; grid-row: 2; }
   .dpad-btn[data-dir="down"]  { grid-column: 2; grid-row: 3; }
 
-  /* 覆盖全局 button 样式，让方向键按钮用暗色风格 */
   .dpad-btn {
     width: 56px;
     height: 56px;
@@ -93,9 +91,7 @@
     transition: background .1s ease, transform .06s ease;
   }
   .dpad-btn:hover  { background: #243449; }
-  /* 按下时的反馈（:active 在桌面端鼠标点击时生效） */
   .dpad-btn:active { background: #334155; transform: scale(.94); }
-  /* 触屏按下时的即时视觉反馈 */
   .dpad-btn.pressed {
     background: #334155;
     transform: scale(.94);
@@ -108,7 +104,6 @@
     gap: 12px;
   }
 
-  /* 全局 button 基础样式（只作用于“重新开始”按钮） */
   button {
     padding: 9px 18px;
     font-size: 14px;
@@ -143,7 +138,7 @@
 
     <canvas id="game" width="400" height="400"></canvas>
 
-    <!-- 四方向按键：data-dir 属性标记方向，由 JS 统一处理 -->
+    <!-- 四方向按键 -->
     <div class="dpad">
       <button class="dpad-btn" data-dir="up"    aria-label="向上">▲</button>
       <button class="dpad-btn" data-dir="left"  aria-label="向左">◀</button>
@@ -167,7 +162,7 @@
   const COLS = 20;
   const ROWS = 20;
   const CELL = 20;
-  /* 【速度调整】原值 120，现改为 150，数值越大蛇走得越慢 */
+  /* 蛇每步间隔（毫秒）：数值越大蛇越慢 */
   const STEP_TIME = 150;
   const BEST_KEY = 'snake_best_score';
 
@@ -255,8 +250,8 @@
    * ========================================================= */
   function setDirection(nd) {
     const last = dirQueue.length ? dirQueue[dirQueue.length - 1] : dir;
-    if (nd.x === -last.x && nd.y === -last.y) return; // 反向无效
-    if (nd.x === last.x && nd.y === last.y) return;    // 同向忽略
+    if (nd.x === -last.x && nd.y === -last.y) return;
+    if (nd.x === last.x && nd.y === last.y) return;
     if (dirQueue.length < 2) dirQueue.push(nd);
   }
 
@@ -269,7 +264,6 @@
     const head = snake[0];
     const next = { x: head.x + dir.x, y: head.y + dir.y };
 
-    // 撞墙
     if (next.x < 0 || next.x >= COLS || next.y < 0 || next.y >= ROWS) {
       gameOver();
       return;
@@ -278,7 +272,6 @@
     const willGrow = (next.x === food.x && next.y === food.y);
     const body = willGrow ? snake : snake.slice(0, -1);
 
-    // 撞自己
     if (body.some(seg => seg.x === next.x && seg.y === next.y)) {
       gameOver();
       return;
@@ -322,7 +315,6 @@
     ctx.fillStyle = '#0b1220';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 网格线
     ctx.strokeStyle = 'rgba(148, 163, 184, 0.10)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -359,9 +351,10 @@
     drawEyes();
 
     if (state === 'paused') {
-      drawOverlay('已暂停', '按空格键继续 / 点击继续');
+      drawOverlay('已暂停', '按空格键继续 / 点击屏幕继续');
     } else if (state === 'over') {
-      drawOverlay('游戏结束', '得分 ' + score + ' · 点击「重新开始」再来一局');
+      /* 更新提示文字：点击屏幕任意地方即可重开 */
+      drawOverlay('游戏结束', '得分 ' + score + ' · 点击屏幕任意地方再来一局');
     }
   }
 
@@ -439,7 +432,7 @@
   }
 
   /* =========================================================
-   *  12. 键盘事件（保留电脑端操作）
+   *  12. 键盘事件
    * ========================================================= */
   const KEY_MAP = {
     ArrowUp:    { x: 0,  y: -1 },
@@ -470,7 +463,7 @@
   let touchEndX = 0;
   let touchEndY = 0;
 
-  const MIN_SWIPE_DISTANCE = 30; // 滑动阈值，防止轻触误触发
+  const MIN_SWIPE_DISTANCE = 30;
 
   canvas.addEventListener('touchstart', function (e) {
     if (state !== 'running') return;
@@ -481,7 +474,7 @@
   }, { passive: false });
 
   canvas.addEventListener('touchmove', function (e) {
-    e.preventDefault(); // 阻止手指滑动时拖动整个页面
+    e.preventDefault();
   }, { passive: false });
 
   canvas.addEventListener('touchend', function (e) {
@@ -493,19 +486,12 @@
     e.preventDefault();
   }, { passive: false });
 
-  /**
-   * 滑动方向判断：
-   * dx = 终点X - 起点X，dy = 终点Y - 起点Y
-   * 若 |dx| > |dy| 则判定为水平滑动，否则为垂直滑动
-   * 再根据 dx / dy 的正负号决定具体方向
-   * setDirection 内部已经处理了 180° 掉头限制
-   */
   function handleSwipe() {
     const dx = touchEndX - touchStartX;
     const dy = touchEndY - touchStartY;
 
     if (Math.abs(dx) < MIN_SWIPE_DISTANCE && Math.abs(dy) < MIN_SWIPE_DISTANCE) {
-      return; // 滑动距离太小，视为误触
+      return;
     }
 
     if (Math.abs(dx) > Math.abs(dy)) {
@@ -528,20 +514,14 @@
   const dpadBtns = document.querySelectorAll('.dpad-btn');
 
   dpadBtns.forEach(function (btn) {
-    // 使用 pointerdown：桌面鼠标点击和移动端触摸都会触发，响应更及时
     btn.addEventListener('pointerdown', function (e) {
-      e.preventDefault(); // 阻止移动端产生重复的 click / 双击缩放
-
-      // 添加按压视觉反馈
+      e.preventDefault();
       btn.classList.add('pressed');
-
       if (state !== 'running') return;
-
       const nd = DIR_MAP[btn.dataset.dir];
       if (nd) setDirection(nd);
     });
 
-    // 松开手指 / 鼠标时移除按压效果
     btn.addEventListener('pointerup', function () {
       btn.classList.remove('pressed');
     });
@@ -552,14 +532,35 @@
       btn.classList.remove('pressed');
     });
 
-    // 长按不弹出右键菜单
     btn.addEventListener('contextmenu', function (e) {
       e.preventDefault();
     });
   });
 
   /* =========================================================
-   *  15. 按钮事件 & 启动
+   *  15. 全局点击：游戏结束点击屏幕任意地方重新开始
+   * ========================================================= */
+  /*
+   * 使用事件委托监听整个页面的点击事件。
+   * 如果点击目标恰好是按钮（重新开始、四方向键），则直接忽略，
+   * 避免和按钮自身逻辑冲突（例如点击重新开始按钮触发两次重开）。
+   * 否则：
+   *   - 若游戏已结束（state === 'over'），点击屏幕任意位置重新开始。
+   *   - 若游戏处于暂停（state === 'paused'），点击屏幕任意位置继续游戏。
+   */
+  document.addEventListener('click', function (e) {
+    // 如果点击到的是按钮（包括重新开始按钮和四方向按键），不在此处处理
+    if (e.target.closest('button')) return;
+
+    if (state === 'over') {
+      reset();
+    } else if (state === 'paused') {
+      togglePause();
+    }
+  });
+
+  /* =========================================================
+   *  16. 按钮事件 & 启动
    * ========================================================= */
   restartBtn.addEventListener('click', function () {
     reset();
@@ -577,4 +578,4 @@
 })();
 </script>
 </body>
-</html>
+</html>s
